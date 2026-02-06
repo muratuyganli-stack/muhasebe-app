@@ -21,14 +21,14 @@ def init_db():
 conn = init_db()
 st.set_page_config(page_title="HAVAS AHŞAP", layout="wide", initial_sidebar_state="collapsed")
 
-# --- 2. GÖRSEL TASARIM (Başlık ve Dashboard Güncellendi) ---
+# --- 2. GÖRSEL TASARIM ---
 st.markdown("""
     <style>
     .main-header { 
         background: #0052D4; padding: 10px; border-radius: 0 0 20px 20px; 
         color: white; text-align: center; margin-bottom: 20px; 
     }
-    .main-header h2 { font-size: 20px; margin: 0; letter-spacing: 1px; } /* Yazı ufaltıldı */
+    .main-header h2 { font-size: 20px; margin: 0; letter-spacing: 1px; }
     
     .dashboard-card { 
         background: #FFFFFF; padding: 15px; border-radius: 20px; 
@@ -54,14 +54,12 @@ def generate_pro_report(df, m_ad):
         c.drawString(50, y, f"{r['tarih']} | {r['tip']} | {r['miktar']:,} TL | {r['aciklama']}"); y -= 20
     c.save(); return buf.getvalue()
 
-# --- 4. GÜNCELLENMİŞ BAŞLIK ---
 st.markdown('<div class="main-header"><h2>HAVAS AHŞAP</h2></div>', unsafe_allow_html=True)
 
-# Verileri Çek
 df_m = pd.read_sql_query("SELECT * FROM musteriler", conn)
 df_i = pd.read_sql_query("SELECT * FROM islemler", conn)
 
-# --- 5. GÜNCELLENMİŞ DASHBOARD (Müşteri Sayısı Kaldırıldı) ---
+# --- 4. DASHBOARD ---
 if 'secili_id' not in st.session_state:
     toplam_aldigim = int(df_i[df_i['tip'].str.contains("Tahsilat")]['miktar'].sum())
     toplam_verdigim = int(df_i[df_i['tip'].str.contains("Satis")]['miktar'].sum())
@@ -75,7 +73,7 @@ if 'secili_id' not in st.session_state:
     </div>
     """, unsafe_allow_html=True)
 
-# --- 6. EKRAN KONTROLÜ (Aynen Korunuyor) ---
+# --- 5. EKRAN KONTROLÜ ---
 if 'secili_id' in st.session_state:
     m_id = st.session_state['secili_id']
     m_bilgi = df_m[df_m['id'] == m_id].iloc[0]
@@ -97,13 +95,14 @@ if 'secili_id' in st.session_state:
         pdf = generate_pro_report(m_i_df, m_bilgi['ad'])
         st.download_button("📥 PDF RAPOR AL", pdf, f"{m_bilgi['ad']}_Rapor.pdf")
 
+    # İSTEDİĞİN GÜNCELLEME: BAŞLIK SADELEŞTİ
     with st.container(border=True):
-        st.markdown("### 📸 YENİ İŞLEM & FOTOĞRAFLAR")
-        with st.form("islem_form_v47", clear_on_submit=True):
+        st.markdown("### ➕ YENİ İŞLEM") 
+        with st.form("islem_form_v48", clear_on_submit=True):
             tip = st.selectbox("İşlem", ["Satis (Verdim)", "Tahsilat (Aldim)"])
             mik = st.number_input("Tutar (TL)", min_value=0, step=1)
             not_ = st.text_input("Not")
-            fotos = st.file_uploader("📷 Fotoğraflar (Çoklu)", accept_multiple_files=True)
+            fotos = st.file_uploader("📷 Fotoğraflar", accept_multiple_files=True)
             if st.form_submit_button("✅ KAYDET"):
                 c = conn.cursor()
                 tarih = datetime.now().strftime("%d-%m-%Y")
@@ -145,4 +144,4 @@ with st.sidebar:
         output = io.BytesIO()
         df_i.to_excel(output, index=False, engine='openpyxl')
         st.download_button("📥 EXCEL YEDEK AL", output.getvalue(), "Havas_Ahsap_Yedek.xlsx")
-            
+    
