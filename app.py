@@ -4,127 +4,139 @@ import sqlite3
 from datetime import datetime
 import urllib.parse
 
-# Veritabanı v13 (Müşteriler ve İşlemler Ayrıldı)
+# Veritabanı v14
 def init_db():
-    conn = sqlite3.connect('muhasebe_v13.db', check_same_thread=False)
+    conn = sqlite3.connect('muhasebe_v14.db', check_same_thread=False)
     c = conn.cursor()
-    # Müşteri Rehberi Tablosu
-    c.execute('''CREATE TABLE IF NOT EXISTS musteriler 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, ad TEXT UNIQUE, tel TEXT)''')
-    # İşlemler Tablosu
-    c.execute('''CREATE TABLE IF NOT EXISTS islemler 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, musteri_id INTEGER, tarih TEXT, tip TEXT, miktar REAL, aciklama TEXT)''')
-    # Fotoğraflar Tablosu
+    c.execute('''CREATE TABLE IF NOT EXISTS musteriler (id INTEGER PRIMARY KEY AUTOINCREMENT, ad TEXT UNIQUE, tel TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS islemler (id INTEGER PRIMARY KEY AUTOINCREMENT, musteri_id INTEGER, tarih TEXT, tip TEXT, miktar REAL, aciklama TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS fotograflar (islem_id INTEGER, foto BLOB)''')
     conn.commit()
     return conn
 
 conn = init_db()
-st.set_page_config(page_title="Profesyonel Cari Takip", layout="wide")
+st.set_page_config(page_title="Cari Takip Pro", layout="wide")
 
-# --- YAN MENÜ: MÜŞTERİ VE İŞLEM EKLEME ---
-with st.sidebar:
-    st.header("👤 Müşteri Yönetimi")
-    # 1. ADIM: Müşteri Kaydet (Bir kez yapılır)
-    with st.expander("✨ Yeni Müşteri Tanımla"):
-        with st.form("musteri_form", clear_on_submit=True):
-            y_ad = st.text_input("Müşteri Adı Soyadı").strip().title()
-            y_tel = st.text_input("Telefon Numarası")
-            if st.form_submit_button("Müşteriyi Kaydet"):
-                if y_ad:
-                    try:
-                        c = conn.cursor()
-                        c.execute("INSERT INTO musteriler (ad, tel) VALUES (?,?)", (y_ad, y_tel))
-                        conn.commit()
-                        st.success(f"{y_ad} Rehbere Eklendi!")
-                        st.rerun()
-                    except: st.error("Bu müşteri zaten kayıtlı!")
+# --- CSS İLE MAVİ BUTON VE GÖRSELLİK ---
+st.markdown("""
+    <style>
+    .stButton>button {
+        width: 100%;
+        border-radius: 10px;
+        height: 3em;
+        background-color: #007BFF;
+        color: white;
+        font-weight: bold;
+        border: none;
+    }
+    .stButton>button:hover {
+        background-color: #0056b3;
+        color: white;
+    }
+    .main-card {
+        background-color: #f8f9fa;
+        padding: 20px;
+        border-radius: 15px;
+        border-left: 5px solid #007BFF;
+        margin-bottom: 10px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-    st.divider()
-    
-    # 2. ADIM: İşlem Yap (Sadece kayıtlı müşterilere)
-    st.header("💰 Yeni İşlem Gir")
-    musteri_listesi = pd.read_sql_query("SELECT * FROM musteriler", conn)
-    if not musteri_listesi.empty:
-        with st.form("islem_form", clear_on_submit=True):
-            secilen_m = st.selectbox("Müşteri Seç", musteri_listesi['ad'].tolist())
-            f_tip = st.selectbox("İşlem Tipi", ["Satis (Alacak Yaz)", "Tahsilat (Borctan Dus)"])
-            f_miktar = st.number_input("Tutar", min_value=0.0)
-            f_not = st.text_input("Not / Açıklama")
-            f_fotos = st.file_uploader("Fotoğrafları Seç (Birden Fazla)", accept_multiple_files=True)
-            
-            if st.form_submit_button("İşlemi Kaydet"):
-                c = conn.cursor()
-                m_id = musteri_listesi[musteri_listesi['ad'] == secilen_m]['id'].values[0]
-                tarih = datetime.now().strftime("%d-%m-%Y %H:%M")
-                c.execute("INSERT INTO islemler (musteri_id, tarih, tip, miktar, aciklama) VALUES (?,?,?,?,?)", 
-                          (int(m_id), tarih, f_tip, f_miktar, f_not))
-                is_id = c.lastrowid
-                for f in f_fotos:
-                    c.execute("INSERT INTO fotograflar VALUES (?,?)", (is_id, f.read()))
-                conn.commit()
-                st.success("İşlem Başarıyla Kaydedildi!")
-                st.rerun()
-    else:
-        st.warning("Önce bir müşteri tanımlamalısınız!")
+# --- ANA SAYFA ÜST KISIM ---
+st.title("💼 Müşteri Yönetim Paneli")
 
-# --- ANA SAYFA: CARİ KARTLAR ---
-st.title("📂 Müşteri Cari Rehberi")
+# Mavi Buton ve Pop-up Mantığı
+if st.button("➕ YENİ MÜŞTERİ EKLE"):
+    st.session_state['yeni_musteri_modu'] = True
+
+if st.session_state.get('yeni_musteri_modu'):
+    with st.container(border=True):
+        st.subheader("👤 Yeni Müşteri Tanımla")
+        y_ad = st.text_input("Ad Soyad")
+        y_tel = st.text_input("Telefon")
+        col_kaydet, col_iptal = st.columns(2)
+        if col_kaydet.button("Kaydet", key="m_kaydet"):
+            if y_ad:
+                try:
+                    c = conn.cursor()
+                    c.execute("INSERT INTO musteriler (ad, tel) VALUES (?,?)", (y_ad, y_tel))
+                    conn.commit()
+                    st.success("Müşteri eklendi!")
+                    st.session_state['yeni_musteri_modu'] = False
+                    st.rerun()
+                except: st.error("Bu isim zaten var!")
+        if col_iptal.button("Vazgeç"):
+            st.session_state['yeni_musteri_modu'] = False
+            st.rerun()
+
+st.divider()
+
+# --- VERİLERİ ÇEK ---
 df_musteri = pd.read_sql_query("SELECT * FROM musteriler", conn)
 df_islem = pd.read_sql_query("SELECT * FROM islemler", conn)
 
+# --- CARİ KARTLAR ---
 if not df_musteri.empty:
-    arama = st.text_input("🔍 İsim veya Telefonla Ara...", "").lower()
+    arama = st.text_input("🔍 Müşteri ara...", placeholder="İsim veya telefon yazın")
     
-    for _, m_row in df_musteri.iterrows():
-        m_id = m_row['id']
-        m_ad = m_row['ad']
-        m_tel = m_row['tel']
-        
-        # Müşterinin İşlemlerini Süz
-        m_islemler = df_islem[df_islem['musteri_id'] == m_id]
-        satis = m_islemler[m_islemler['tip'] == "Satis (Alacak Yaz)"]['miktar'].sum()
-        tahsilat = m_islemler[m_islemler['tip'] == "Tahsilat (Borctan Dus)"]['miktar'].sum()
-        bakiye = satis - tahsilat
-        
-        if arama in m_ad.lower() or arama in str(m_tel):
+    for _, m in df_musteri.iterrows():
+        if arama.lower() in m['ad'].lower() or arama in str(m['tel']):
+            # Bakiye Hesapla
+            m_islemler = df_islem[df_islem['musteri_id'] == m['id']]
+            bakiye = m_islemler[m_islemler['tip'] == "Satis (Alacak Yaz)"]['miktar'].sum() - \
+                     m_islemler[m_islemler['tip'] == "Tahsilat (Borctan Dus)"]['miktar'].sum()
+            
+            # Kart Tasarımı
             with st.container(border=True):
-                col1, col2, col3 = st.columns([3, 2, 1.5])
-                with col1:
-                    st.markdown(f"### {m_ad}")
-                    if m_tel: st.markdown(f"📞 [Ara: {m_tel}](tel:{m_tel})")
-                with col2:
-                    renk = "red" if bakiye > 0 else "green"
-                    st.markdown(f"<h3 style='color:{renk}; text-align:right;'>{abs(bakiye):,.2f} TL</h3>", unsafe_allow_html=True)
-                    st.markdown(f"<p style='text-align:right; color:grey;'>{'BORÇLU' if bakiye > 0 else 'ALACAKLI'}</p>", unsafe_allow_html=True)
-                with col3:
-                    if st.button("Detaylar", key=f"det_{m_id}"):
-                        st.session_state['detay_id'] = m_id
+                c1, c2, c3 = st.columns([3, 2, 1.5])
+                with c1:
+                    st.markdown(f"### {m['ad']}")
+                    if m['tel']: st.markdown(f"📞 [Ara: {m['tel']}](tel:{m['tel']})")
+                with c2:
+                    renk = "#d9534f" if bakiye > 0 else "#5cb85c"
+                    st.markdown(f"<h2 style='color:{renk}; text-align:right; margin:0;'>{abs(bakiye):,.2f} TL</h2>", unsafe_allow_html=True)
+                    st.markdown(f"<p style='text-align:right; color:grey; margin:0;'>{'BORÇLU' if bakiye > 0 else 'ALACAKLI'}</p>", unsafe_allow_html=True)
+                with c3:
+                    if st.button("Detay / İşlem", key=f"det_{m['id']}"):
+                        st.session_state['detay_id'] = m['id']
                         st.rerun()
-                    
-                    if bakiye > 0 and m_tel:
-                        mesaj = f"Merhaba {m_ad}, güncel borç bakiyeniz {bakiye:,.2f} TL'dir."
-                        wa_url = f"https://wa.me/9{m_tel}?text={urllib.parse.quote(mesaj)}"
-                        st.markdown(f"[💬 WhatsApp]({wa_url})")
+                    if bakiye > 0 and m['tel']:
+                        wa_url = f"https://wa.me/9{m['tel']}?text=Merhaba {m['ad']}, güncel borcunuz {bakiye:,.2f} TL'dir."
+                        st.markdown(f"[💬 WhatsApp]({urllib.parse.quote(wa_url, safe=':/=?&')})")
 
-# --- DETAY PANELİ ---
+# --- DETAY VE İŞLEM PANELİ ---
 if 'detay_id' in st.session_state:
     m_id = st.session_state['detay_id']
-    m_bilgi = df_musteri[df_musteri['id'] == m_id].iloc[0]
+    m_info = df_musteri[df_musteri['id'] == m_id].iloc[0]
     st.divider()
     if st.button("⬅️ Listeye Dön"):
-        del st.session_state['detay_id']
-        st.rerun()
+        del st.session_state['detay_id']; st.rerun()
     
-    st.header(f"📋 {m_bilgi['ad']} - Geçmiş İşlemler")
+    st.header(f"📋 {m_info['ad']}")
+    
+    # Yeni İşlem Ekleme (Detay içinde)
+    with st.expander("➕ Bu Müşteriye Yeni İşlem Gir"):
+        with st.form("islem_form", clear_on_submit=True):
+            f_tip = st.selectbox("İşlem", ["Satis (Alacak Yaz)", "Tahsilat (Borctan Dus)"])
+            f_miktar = st.number_input("Tutar", min_value=0.0)
+            f_not = st.text_input("Açıklama")
+            f_fotos = st.file_uploader("Fotoğraflar (Çoklu)", accept_multiple_files=True)
+            if st.form_submit_button("Kaydet"):
+                c = conn.cursor()
+                tarih = datetime.now().strftime("%d-%m-%Y %H:%M")
+                c.execute("INSERT INTO islemler (musteri_id, tarih, tip, miktar, aciklama) VALUES (?,?,?,?,?)", (int(m_id), tarih, f_tip, f_miktar, f_not))
+                is_id = c.lastrowid
+                for f in f_fotos: c.execute("INSERT INTO fotograflar VALUES (?,?)", (is_id, f.read()))
+                conn.commit(); st.success("İşlem kaydedildi!"); st.rerun()
+
+    # Geçmiş İşlemler
     k_df = df_islem[df_islem['musteri_id'] == m_id].sort_values(by='id', ascending=False)
-    
     for _, row in k_df.iterrows():
         with st.expander(f"📌 {row['tarih']} - {row['tip']} - {row['miktar']} TL"):
             st.write(f"**Not:** {row['aciklama']}")
             f_df = pd.read_sql_query(f"SELECT foto FROM fotograflar WHERE islem_id = {row['id']}", conn)
             if not f_df.empty:
                 cols = st.columns(len(f_df))
-                for i, f_row in f_df.iterrows():
-                    cols[i].image(f_row['foto'], use_container_width=True)
-    
+                for i, fr in f_df.iterrows(): cols[i].image(fr['foto'], use_container_width=True)
+                                 
