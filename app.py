@@ -18,22 +18,34 @@ def init_db():
 conn = init_db()
 st.set_page_config(page_title="HAVAS AHŞAP", layout="wide", initial_sidebar_state="collapsed")
 
-# --- 2. GÖRSEL TASARIM (Yazı Boyutu Ufaltıldı) ---
+# --- 2. GÖRSEL TASARIM VE TIKLANABİLİR BAŞLIK ---
 st.markdown("""
     <style>
     .main-header { 
         background: #0052D4; padding: 5px; border-radius: 0 0 15px 15px; 
-        color: white; text-align: center; margin-bottom: 15px; 
+        color: white; text-align: center; margin-bottom: 15px;
     }
-    .main-header h3 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: 0.5px; } /* Ufaltılan kısım */
+    /* Başlığı buton gibi göstermek için stil */
+    .stButton > button.home-btn {
+        background: transparent; border: none; color: white;
+        font-size: 16px; font-weight: 600; letter-spacing: 0.5px;
+        width: 100%; height: 100%; cursor: pointer; padding: 5px;
+    }
+    .stButton > button.home-btn:hover { color: #E2E8F0; }
     
     .customer-card { background: white; padding: 15px; border-radius: 18px; margin-bottom: 12px; border-left: 10px solid #0052D4; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
     .action-btn { background: #F0F7FF; border: 1px solid #0052D4; border-radius: 10px; padding: 8px; text-align: center; color: #0052D4; font-weight: bold; text-decoration: none; display: block; margin-bottom: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. BAŞLIK (Küçük ve Zarif) ---
-st.markdown('<div class="main-header"><h3>HAVAS AHŞAP</h3></div>', unsafe_allow_html=True)
+# --- 3. TIKLANABİLİR BAŞLIK FONKSİYONU ---
+with st.container():
+    st.markdown('<div class="main-header">', unsafe_allow_html=True)
+    if st.button("HAVAS AHŞAP", key="home_nav", help="Ana Sayfaya Dön", use_container_width=True):
+        if 'secili_id' in st.session_state:
+            del st.session_state['secili_id']
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 df_m = pd.read_sql_query("SELECT * FROM musteriler", conn)
 df_i = pd.read_sql_query("SELECT * FROM islemler", conn)
@@ -60,7 +72,7 @@ if 'secili_id' in st.session_state:
     
     with st.container(border=True):
         st.markdown("### ➕ YENİ İŞLEM")
-        with st.form("islem_form_v51", clear_on_submit=True):
+        with st.form("islem_form_v52", clear_on_submit=True):
             tip = st.selectbox("İşlem", ["Satis (Verdim)", "Tahsilat (Aldim)"])
             mik = st.number_input("Tutar (₺)", min_value=0, step=1)
             not_ = st.text_input("Açıklama")
@@ -107,4 +119,4 @@ with st.sidebar:
         output = io.BytesIO()
         df_i.to_excel(output, index=False, engine='openpyxl')
         st.download_button("📥 EXCEL YEDEK", output.getvalue(), "Havas_Yedek.xlsx")
-    
+            
