@@ -1,88 +1,98 @@
 import streamlit as st
 import pandas as pd
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+import pickle
+import io
 from PIL import Image
 
-st.set_page_config(page_title="Görsel Destekli Cari Takip", layout="wide")
+# --- AYARLAR ---
+# Google Drive klasör linkindeki son karmaşık kodu buraya yapıştır:
+FOLDER_ID = "KLASOR_ID_BURAYA" 
 
+st.set_page_config(page_title="Otomatik Yedekli Cari Takip", layout="wide")
+
+# Uygulama Hafızasını Başlat
 if 'cariler' not in st.session_state:
-    st.session_state.cariler = {} 
+    st.session_state.cariler = {}
 
-st.title("📸 Görsel Destekli Cari Takip")
+# --- GOOGLE DRIVE YEDEKLEME FONKSİYONU ---
+def drive_otomatik_yedekle():
+    try:
+        # Secrets'tan anahtarı çek
+        info = st.secrets["gcp_service_account"]
+        creds = service_account.Credentials.from_service_account_info(info)
+        service = build('drive', 'v3', credentials=creds)
+        
+        # Veriyi hazırla (Görsellerle birlikte tüm sözlüğü paketle)
+        data = pickle.dumps(st.session_state.cariler)
+        fh = io.BytesIO(data)
+        media = MediaIoBaseUpload(fh, mimetype='application/octet-stream')
+        
+        file_metadata = {'name': 'veresiye_otomatik_yedek.dat', 'parents': [FOLDER_ID]}
+        
+        # Drive'a yükle (Her seferinde yeni dosya oluşturur, istersen güncelleyebiliriz)
+        service.files().create(body=file_metadata, media_body=media).execute()
+        st.toast("✅ Google Drive'a otomatik yedeklendi!")
+    except Exception as e:
+        st.error(f"Yedekleme Hatası: {e}")
 
-sekme1, sekme2 = st.tabs(["📇 Cari Kart Tanımla", "💰 Borç/Alacak İşlemi"])
+# --- ARAYÜZ ---
+st.title("📂 Otomatik Yedekli Cari Takip")
 
-# --- SEKME 1: CARİ KART TANIMLAMA ---
+sekme1, sekme2 = st.tabs(["📇 Cari Kart Tanımla", "💰 İşlem Yap ve Görüntüle"])
+
 with sekme1:
-    st.header("Yeni Müşteri (Cari) Kartı")
     with st.form("cari_form"):
         isim = st.text_input("Müşteri / Firma Adı")
-        tel = st.text_input("Telefon Numarası")
-        limit = st.number_input("Borç Limiti (TL)", min_value=0, value=0, step=1)
-        submit = st.form_submit_button("Kartı Oluştur")
-        
-        if submit and isim:
+        tel = st.text_input("Telefon")
+        limit = st.number_input("Borç Limiti (TL)", min_value=0, step=1)
+        if st.form_submit_button("Kartı Oluştur") and isim:
             if isim not in st.session_state.cariler:
                 st.session_state.cariler[isim] = {"Telefon": tel, "Limit": limit, "Islemler": []}
-                st.success(f"{isim} için cari kart açıldı.")
+                st.success(f"{isim} kaydedildi.")
+                drive_otomatik_yedekle() # Müşteri açılınca yedekle
 
-# --- SEKME 2: İŞLEM VE GÖRSEL YÜKLEME ---
 with sekme2:
     if not st.session_state.cariler:
-        st.info("Önce bir cari kart tanımlayın.")
+        st.info("Henüz müşteri kaydı yok.")
     else:
-        secilen_musteri = st.selectbox("Müşteri Seçin", list(st.session_state.cariler.keys()))
-        
-        col1, col2 = st.columns([1, 1.5]) # Sağ tarafı görseller için biraz daha genişlettik
+        secilen = st.selectbox("Müşteri Seç", list(st.session_state.cariler.keys()))
+        col1, col2 = st.columns([1, 2])
         
         with col1:
-            st.subheader("İşlem Detayı")
-            islem_turu = st.radio("İşlem Türü", ["Borçlandır", "Tahsilat Yap"])
-            tutar = st.number_input("Tutar (TL)", min_value=0, value=0, step=1)
-            aciklama = st.text_area("Açıklama (Ürünler, Notlar vb.)")
+            st.subheader("İşlem Ekle")
+            tur = st.radio("Tür", ["Borçlandır", "Tahsilat"])
+            tutar = st.number_input("Tutar (TL)", min_value=0, step=1)
+            not_al = st.text_area("Açıklama")
+            fotolar = st.file_uploader("Görseller", accept_multiple_files=True, type=['jpg','png'])
             
-            # --- ÇOKLU GÖRSEL YÜKLEME ALANI ---
-            yuklenen_dosyalar = st.file_uploader("İşlemle ilgili görselleri seçin (Fiş, Ürün vb.)", 
-                                                accept_multiple_files=True, 
-                                                type=['png', 'jpg', 'jpeg'])
-            
-            if st.button("İşlemi Kaydet"):
-                is_tipi = "Borç" if islem_turu == "Borçlandır" else "Ödeme"
-                
-                # Görselleri listeye al
-                gorsel_listesi = []
-                if yuklenen_dosyalar:
-                    for dosya in yuklenen_dosyalar:
-                        img = Image.open(dosya)
-                        gorsel_listesi.append(img)
-
-                st.session_state.cariler[secilen_musteri]["Islemler"].append({
+            if st.button("Kaydet ve Drive'a Gönder"):
+                yeni_islem = {
                     "Tarih": pd.Timestamp.now().strftime("%d-%m-%Y %H:%M"),
-                    "Tür": is_tipi,
+                    "Tür": "Borç" if tur == "Borçlandır" else "Ödeme",
                     "Tutar": int(tutar),
-                    "Açıklama": aciklama,
-                    "Görseller": gorsel_listesi
-                })
-                st.toast("Kayıt ve görseller başarıyla eklendi!")
+                    "Not": not_al,
+                    "Görseller": [Image.open(f) for f in fotolar] if fotolar else []
+                }
+                st.session_state.cariler[secilen]["Islemler"].append(yeni_islem)
+                # İŞLEM BİTİNCE OTOMATİK YEDEKLE
+                drive_otomatik_yedekle()
+                st.success("Kayıt tamam!")
 
         with col2:
-            st.subheader(f"Ekstre ve Kanıtlar: {secilen_musteri}")
-            bilgi = st.session_state.cariler[secilen_musteri]
-            
-            if bilgi["Islemler"]:
-                for i, islem in enumerate(reversed(bilgi["Islemler"])):
-                    with st.expander(f"{islem['Tarih']} - {islem['Tür']}: {islem['Tutar']} TL"):
-                        st.write(f"**Not:** {islem['Açıklama']}")
-                        
-                        # Eğer görsel varsa yan yana göster
-                        if islem["Görseller"]:
-                            st.write("📸 **Ekli Görseller:**")
-                            cols = st.columns(len(islem["Görseller"]))
-                            for idx, gorsel in enumerate(islem["Görseller"]):
-                                with cols[idx]:
-                                    st.image(gorsel, use_container_width=True)
-                
-                st.divider()
-                df = pd.DataFrame(bilgi["Islemler"])
-                bakiye = int(df[df["Tür"] == "Borç"]["Tutar"].sum() - df[df["Tür"] == "Ödeme"]["Tutar"].sum())
-                st.metric("Güncel Bakiye", f"{bakiye} TL")
-                                                             
+            st.subheader(f"Ekstre: {secilen}")
+            bilgi = st.session_state.cariler[secilen]
+            for islem in reversed(bilgi["Islemler"]):
+                with st.expander(f"{islem['Tarih']} | {islem['Tür']} | {islem['Tutar']} TL"):
+                    st.write(f"**Not:** {islem['Not']}")
+                    if islem["Görseller"]:
+                        cols = st.columns(4)
+                        for idx, img in enumerate(islem["Görseller"]):
+                            cols[idx % 4].image(img, use_container_width=True)
+
+            islem_df = pd.DataFrame(bilgi["Islemler"])
+            if not islem_df.empty:
+                bakiye = islem_df[islem_df["Tür"]=="Borç"]["Tutar"].sum() - islem_df[islem_df["Tür"]=="Ödeme"]["Tutar"].sum()
+                st.metric("Güncel Bakiye", f"{int(bakiye)} TL")
