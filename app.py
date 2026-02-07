@@ -1,31 +1,40 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-st.set_page_config(page_title="Veresiye Defteri", layout="centered")
+st.set_page_config(page_title="Veresiye Defteri", page_icon="📝")
+
+# Uygulama başladığında boş bir liste oluştur
+if 'veriler' not in st.session_state:
+    st.session_state.veriler = []
 
 st.title("📑 Dijital Veresiye Defteri")
 
-# Google Sheets Bağlantısı (URL kısmına kendi tablo linkini yapıştırabilirsin)
-url = "BURAYA_GOOGLE_SHEET_LINKINI_YAPISTIR"
-
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    df = conn.read(spreadsheet=url)
+# Giriş Alanları
+with st.sidebar:
+    st.header("Yeni İşlem")
+    musteri = st.text_input("Müşteri Adı")
+    tutar = st.number_input("Tutar (TL)", min_value=0.0)
     
-    # Arayüz İşlemleri
-    with st.sidebar:
-        st.header("Yeni Kayıt")
-        isim = st.text_input("Müşteri Adı")
-        miktar = st.number_input("Tutar (TL)", min_value=0.0)
-        
-        if st.button("Kaydet"):
-            st.success(f"{isim} için işlem yapıldı!")
-            # Not: Yazma işlemi için Google Cloud Console ayarı gerekir.
-            
-    st.subheader("Borçlu Listesi")
-    st.dataframe(df, use_container_width=True)
+    col1, col2 = st.columns(2)
+    if col1.button("Borç Yaz"):
+        if musteri:
+            st.session_state.veriler.append({"Müşteri": musteri, "Tür": "Borç", "Miktar": tutar})
+            st.toast("Borç kaydedildi!")
+    
+    if col2.button("Ödeme Al"):
+        if musteri:
+            st.session_state.veriler.append({"Müşteri": musteri, "Tür": "Ödeme", "Miktar": tutar})
+            st.toast("Ödeme alındı!")
 
-except Exception as e:
-    st.warning("Lütfen requirements.txt dosyasını kontrol et ve Google Sheet linkini ekle.")
+# Tabloyu Göster
+if st.session_state.veriler:
+    df = pd.DataFrame(st.session_state.veriler)
+    st.table(df)
+    
+    # Hesaplama
+    borc = df[df["Tür"] == "Borç"]["Miktar"].sum()
+    odeme = df[df["Tür"] == "Ödeme"]["Miktar"].sum()
+    st.metric("Kalan Alacak", f"{borc - odeme} TL")
+else:
+    st.info("Henüz kayıt bulunmuyor. Sol menüden ekleme yapabilirsin.")
     
