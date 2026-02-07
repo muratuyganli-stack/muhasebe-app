@@ -5,7 +5,7 @@ from datetime import datetime
 import io
 import plotly.express as px
 
-# --- 1. VERİTABANI BAĞLANTISI ---
+# --- 1. VERİTABANI BAĞLANTISI (Sadık Kalıyoruz) ---
 def init_db():
     conn = sqlite3.connect('havas_pro_v45.db', check_same_thread=False)
     c = conn.cursor()
@@ -16,19 +16,47 @@ def init_db():
     return conn
 
 conn = init_db()
-st.set_page_config(page_title="HAVAS AHŞAP", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="HAVAS AHŞAP PRO", layout="wide", initial_sidebar_state="collapsed")
 
-# --- 2. GÖRSEL TASARIM ---
+# --- 2. PREMIUM GÖRSEL TASARIM (CSS GÜNCELLEMESİ) ---
 st.markdown("""
     <style>
-    .main-header-btn { background-color: #0052D4 !important; color: white !important; border-radius: 0 0 15px 15px !important; width: 100% !important; font-size: 18px !important; font-weight: 700 !important; margin-bottom: 15px; border: none !important; padding: 10px !important; }
-    .customer-card { background: white; padding: 15px; border-radius: 18px; margin-bottom: 12px; border-left: 10px solid #0052D4; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-    .delete-btn { color: #FF4B4B !important; border: 1px solid #FF4B4B !important; border-radius: 8px; }
+    /* Genel Arka Plan */
+    .stApp { background-color: #F8FAFC; }
+    
+    /* Premium Üst Başlık */
+    .stButton > button.home-btn-premium {
+        background: linear-gradient(135deg, #0052D4, #4364F7, #6FB1FC) !important;
+        color: white !important; border: none !important; padding: 12px !important;
+        border-radius: 0 0 20px 20px !important; width: 100% !important;
+        font-size: 20px !important; font-weight: 800 !important;
+        box-shadow: 0 10px 20px rgba(0,82,212,0.2) !important;
+        transition: all 0.3s ease;
+    }
+    
+    /* Müşteri Kartları */
+    .customer-card-pro { 
+        background: white; padding: 20px; border-radius: 20px; margin-bottom: 15px; 
+        border-left: 12px solid #0052D4; box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+        transition: transform 0.2s;
+    }
+    .customer-card-pro:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+    
+    /* Özet Paneli */
+    .stats-box {
+        background: white; padding: 20px; border-radius: 25px; 
+        display: flex; justify-content: space-around; align-items: center;
+        border: 1px solid #E2E8F0; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+    }
+    
+    /* Butonlar */
+    .stButton > button { border-radius: 12px !important; transition: all 0.2s; }
+    .stButton > button:hover { opacity: 0.9; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. NAVİGASYON ---
-if st.button("HAVAS AHŞAP", key="header_home"):
+# --- 3. PREMIUM NAVİGASYON ---
+if st.button("HAVAS AHŞAP", key="header_home_pro", help="Ana Sayfa"):
     for key in ['secili_id', 'y_m', 'edit_islem_id']:
         if key in st.session_state: del st.session_state[key]
     st.rerun()
@@ -42,41 +70,35 @@ if 'secili_id' in st.session_state:
     m_id = st.session_state['secili_id']
     m_bilgi = df_m[df_m['id'] == m_id].iloc[0]
     
-    col_back, col_del_m = st.columns([3, 1])
-    with col_back:
-        if st.button("⬅️ LİSTEYE DÖN"): del st.session_state['secili_id']; st.rerun()
-    with col_del_m:
-        if st.button("🗑️ MÜŞTERİYİ SİL", use_container_width=True):
-            c = conn.cursor()
-            c.execute("DELETE FROM musteriler WHERE id=?", (int(m_id),))
-            c.execute("DELETE FROM islemler WHERE musteri_id=?", (int(m_id),))
-            conn.commit(); del st.session_state['secili_id']; st.rerun()
+    # Başlık ve Silme Butonu
+    c_header, c_del = st.columns([4, 1.2])
+    with c_header: 
+        if st.button("⬅️ Geri Dön"): del st.session_state['secili_id']; st.rerun()
+    with c_del:
+        if st.button("🗑️ Kaydı Sil", type="secondary", use_container_width=True):
+            conn.cursor().execute("DELETE FROM musteriler WHERE id=?", (int(m_id),)); conn.commit(); del st.session_state['secili_id']; st.rerun()
     
-    st.markdown(f"#### 👤 {m_bilgi['ad']}")
+    st.markdown(f"<h2 style='color:#1E293B; margin-top:10px;'>👤 {m_bilgi['ad']}</h2>", unsafe_allow_html=True)
     
-    # İŞLEM DÜZENLEME FORMU (Eğer bir işlem seçildiyse)
+    # İşlem Düzenleme (Varsa)
     if 'edit_islem_id' in st.session_state:
-        e_id = st.session_state['edit_islem_id']
-        e_row = df_i[df_i['id'] == e_id].iloc[0]
-        with st.form("edit_form"):
-            st.warning(f"Düzenlenen İşlem: {e_row['tarih']}")
-            yeni_mik = st.number_input("Yeni Tutar", value=int(e_row['miktar']))
-            yeni_not = st.text_input("Yeni Not", value=str(e_row['aciklama']))
-            col_e1, col_e2 = st.columns(2)
-            if col_e1.form_submit_button("GÜNCELLE"):
-                conn.cursor().execute("UPDATE islemler SET miktar=?, aciklama=? WHERE id=?", (yeni_mik, yeni_not, e_id))
+        with st.container(border=True):
+            st.warning("İşlemi Güncelle")
+            e_row = df_i[df_i['id'] == st.session_state['edit_islem_id']].iloc[0]
+            y_mik = st.number_input("Tutar", value=int(e_row['miktar']))
+            y_not = st.text_input("Not", value=str(e_row['aciklama']))
+            if st.button("✅ Güncellemeyi Kaydet"):
+                conn.cursor().execute("UPDATE islemler SET miktar=?, aciklama=? WHERE id=?", (y_mik, y_not, st.session_state['edit_islem_id']))
                 conn.commit(); del st.session_state['edit_islem_id']; st.rerun()
-            if col_e2.form_submit_button("İPTAL"):
-                del st.session_state['edit_islem_id']; st.rerun()
 
-    # YENİ İŞLEM EKLEME (Koda Sadık)
-    with st.expander("➕ YENİ İŞLEM EKLE", expanded=False):
-        with st.form("islem_v55", clear_on_submit=True):
-            tip = st.selectbox("Tür", ["Satis (Verdim)", "Tahsilat (Aldim)"])
-            mik = st.number_input("Tutar", min_value=0, step=1)
-            not_ = st.text_input("Not")
+    # Yeni İşlem Formu
+    with st.expander("✨ YENİ İŞLEM EKLE", expanded=False):
+        with st.form("islem_pro", clear_on_submit=True):
+            tip = st.selectbox("İşlem Türü", ["Satis (Verdim)", "Tahsilat (Aldim)"])
+            mik = st.number_input("Tutar (₺)", min_value=0)
+            not_ = st.text_input("Açıklama / Not")
             fotos = st.file_uploader("📷 Fotoğraflar", accept_multiple_files=True)
-            if st.form_submit_button("KAYDET"):
+            if st.form_submit_button("SİSTEME İŞLE"):
                 c = conn.cursor()
                 tarih = datetime.now().strftime("%d-%m-%Y %H:%M")
                 c.execute("INSERT INTO islemler (musteri_id, tarih, miktar, tip, aciklama) VALUES (?,?,?,?,?)", (int(m_id), tarih, int(mik), tip, not_))
@@ -84,19 +106,17 @@ if 'secili_id' in st.session_state:
                 for f in fotos: c.execute("INSERT INTO fotograflar VALUES (?,?)", (is_id, f.read()))
                 conn.commit(); st.rerun()
 
-    # HAREKETLER LİSTESİ (Düzenle ve Sil Butonlu)
-    st.markdown("### 📜 İşlem Geçmişi")
+    # Hesap Dökümü
+    st.markdown("### 📜 Hesap Hareketleri")
     m_i_df = df_i[df_i['musteri_id'] == m_id].sort_values(by='id', ascending=False)
     for _, row in m_i_df.iterrows():
-        with st.expander(f"📌 {row['tarih']} | {row['tip']} | {row['miktar']:,} ₺"):
-            st.write(f"Not: {row['aciklama']}")
-            col1, col2 = st.columns(2)
-            if col1.button(f"✏️ Düzenle", key=f"e_{row['id']}"):
-                st.session_state['edit_islem_id'] = row['id']; st.rerun()
-            if col2.button(f"🗑️ Sil", key=f"d_{row['id']}"):
-                conn.cursor().execute("DELETE FROM islemler WHERE id=?", (row['id'],))
-                conn.cursor().execute("DELETE FROM fotograflar WHERE islem_id=?", (row['id'],))
-                conn.commit(); st.rerun()
+        renk = "#10B981" if "Tahsilat" in row['tip'] else "#EF4444"
+        with st.expander(f"📍 {row['tarih']} | {row['tip']} | {row['miktar']:,} ₺"):
+            st.markdown(f"<p style='color:#64748B;'>Not: {row['aciklama']}</p>", unsafe_allow_html=True)
+            c1, c2 = st.columns(2)
+            if c1.button("✏️ Düzenle", key=f"e_{row['id']}"): st.session_state['edit_islem_id'] = row['id']; st.rerun()
+            if c2.button("🗑️ Sil", key=f"d_{row['id']}"):
+                conn.cursor().execute("DELETE FROM islemler WHERE id=?", (row['id'],)); conn.commit(); st.rerun()
             
             f_df = pd.read_sql_query(f"SELECT foto FROM fotograflar WHERE islem_id = {row['id']}", conn)
             if not f_df.empty:
@@ -104,29 +124,52 @@ if 'secili_id' in st.session_state:
                 for i, fr in f_df.iterrows(): cols[i % 3].image(fr['foto'], use_container_width=True)
 
 else:
-    # ANA LİSTE (Koda Sadık)
-    toplam_aldigim = int(df_i[df_i['tip'].str.contains("Tahsilat")]['miktar'].sum() if not df_i.empty else 0)
-    toplam_verdigim = int(df_i[df_i['tip'].str.contains("Satis")]['miktar'].sum() if not df_i.empty else 0)
-    st.markdown(f"""<div style="background:white; padding:10px; border-radius:15px; display:flex; justify-content:space-around; margin-bottom:15px; border:1px solid #E2E8F0;">
-        <div style="text-align:center;"><small>Tahsilat</small><br><b style="color:green;">{toplam_aldigim:,} ₺</b></div>
-        <div style="text-align:center;"><small>Alacak</small><br><b style="color:red;">{toplam_verdigim - toplam_aldigim:,} ₺</b></div>
-    </div>""", unsafe_allow_html=True)
+    # --- ANA SAYFA PREMIUM GÖRÜNÜM ---
+    top_ald = int(df_i[df_i['tip'].str.contains("Tahsilat")]['miktar'].sum() if not df_i.empty else 0)
+    top_ver = int(df_i[df_i['tip'].str.contains("Satis")]['miktar'].sum() if not df_i.empty else 0)
+    
+    st.markdown(f"""
+    <div class="stats-box">
+        <div style="text-align:center;"><small style="color:#64748B;">Tahsil Edilen</small><br><b style="color:#10B981; font-size:22px;">{top_ald:,} ₺</b></div>
+        <div style="width:1px; height:40px; background:#E2E8F0;"></div>
+        <div style="text-align:center;"><small style="color:#64748B;">Toplam Alacak</small><br><b style="color:#EF4444; font-size:22px;">{top_ver - top_ald:,} ₺</b></div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    if st.button("➕ YENİ MÜŞTERİ KAYDET"): st.session_state['y_m'] = True
+    st.markdown("<div style='margin-bottom:20px;'></div>", unsafe_allow_html=True)
+    
+    if st.button("➕ YENİ MÜŞTERİ KAYDET", type="primary"): st.session_state['y_m'] = True
     if st.session_state.get('y_m'):
-        with st.form("yeni_m"):
+        with st.form("y_m_pro"):
             ad = st.text_input("Ad Soyad")
-            tel = st.text_input("Telefon")
-            if st.form_submit_button("REHBERE EKLE"):
+            tel = st.text_input("Telefon No")
+            if st.form_submit_button("✅ SİSTEME EKLE"):
                 conn.cursor().execute("INSERT INTO musteriler (ad, tel) VALUES (?,?)", (ad, tel))
                 conn.commit(); del st.session_state['y_m']; st.rerun()
 
-    search = st.text_input("🔍 Müşteri Ara...")
+    search = st.text_input("🔍 Müşteri Listesinde Ara...")
     for _, m in df_m.iterrows():
         if search.lower() in m['ad'].lower():
             m_i = df_i[df_i['musteri_id'] == m['id']]
             b = int(m_i[m_i['tip'].str.contains("Satis")]['miktar'].sum() - m_i[m_i['tip'].str.contains("Tahsilat")]['miktar'].sum())
-            st.markdown(f"""<div class="customer-card"><b>{m['ad']}</b><br><b style="color:{'#EF4444' if b > 0 else '#10B981'}; font-size:20px;">{abs(b):,} TL</b></div>""", unsafe_allow_html=True)
+            
+            st.markdown(f"""
+            <div class="customer-card-pro">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div><b style="font-size:20px; color:#1E293B;">{m['ad']}</b></div>
+                    <div style="text-align:right;">
+                        <b style="color:{'#EF4444' if b > 0 else '#10B981'}; font-size:22px;">{abs(b):,} ₺</b><br>
+                        <small style="color:#64748B;">{'Bakiyesi Var' if b > 0 else 'Borcu Yok'}</small>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
             if st.button(f"HESABI GÖR: {m['ad']}", key=f"v_{m['id']}"):
                 st.session_state['secili_id'] = m['id']; st.rerun()
-        
+
+with st.sidebar:
+    st.markdown("### 💎 PREMIUM PANEL")
+    if not df_i.empty:
+        output = io.BytesIO()
+        df_i.to_excel(output, index=False, engine='openpyxl')
+        st.download_button("📥 Excel Yedek Al", output.getvalue(), "Havas_V56_Yedek.xlsx", use_container_width=True)
